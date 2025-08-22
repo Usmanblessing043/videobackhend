@@ -18,48 +18,54 @@ app.use("/user", uservideoroute);
 io.of("/user").on("connection", (socket) => {
   console.log("🔗 User connected:", socket.id);
 
+  // ✅ Join room
   socket.on("join-room", (roomId) => {
     socket.join(roomId);
     console.log(`📌 ${socket.id} joined room: ${roomId}`);
 
     const room = io.of("/user").adapter.rooms.get(roomId);
 
-    // First user is HOST
     if (room && room.size === 1) {
       socket.emit("host");
       console.log("🎥 Sent HOST event to:", socket.id);
     }
 
-    // Tell existing users someone joined
+    // Send existing users to the new user
     const otherUsers = [...room].filter((id) => id !== socket.id);
     socket.emit("all-users", otherUsers);
 
-    // Tell everyone else about the new user
-    socket.to(roomId).emit("user-joined", { callerId: socket.id });
+    // Notify others that a new user joined
+    socket.to(roomId).emit("user-joined", { newUserId: socket.id });
   });
 
-  // ✅ Simple-peer signaling
+  // ✅ Step 1: Caller sends signal
   socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
     console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
-    io.of("/user").to(userToSignal).emit("user-joined", { signal, callerId });
+    io.of("/user")
+      .to(userToSignal)
+      .emit("receiving-signal", { signal, callerId });
   });
 
+  // ✅ Step 2: Callee returns signal
   socket.on("returning-signal", ({ signal, callerId }) => {
     console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
-    io.of("/user").to(callerId).emit("signal", { signal, callerId: socket.id });
+    io.of("/user")
+      .to(callerId)
+      .emit("receiving-returned-signal", { signal, id: socket.id });
   });
 
-  // ✅ Chat messages
+  // ✅ Chat
   socket.on("chat-message", ({ roomId, user, message }) => {
     io.of("/user").to(roomId).emit("chat-message", { user, message });
   });
 
-  // ✅ End call by host
+  // ✅ Host ends call
   socket.on("end-call", (roomId) => {
     io.of("/user").to(roomId).emit("end-call");
     console.log(`🚪 Host ended call in room ${roomId}`);
   });
 
+  // ✅ Handle disconnects
   socket.on("disconnecting", () => {
     [...socket.rooms].forEach((roomId) => {
       if (roomId !== socket.id) {

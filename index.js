@@ -36,16 +36,16 @@ io.of("/user").on("connection", (socket) => {
   });
 
   // ✅ Step 1: Caller sends signal to target user
-  socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
-    console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
+  socket.on("send-signal", ({ userToSignal, callerId, signal }) => {
+    console.log(`📡 ${callerId} ➝ ${userToSignal} [send-signal]`);
     io.of("/user")
       .to(userToSignal)
       .emit("receiving-signal", { signal, callerId });
   });
 
   // ✅ Step 2: Callee returns signal back to caller
-  socket.on("returning-signal", ({ signal, callerId }) => {
-    console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
+  socket.on("return-signal", ({ signal, callerId }) => {
+    console.log(`📡 ${socket.id} ➝ ${callerId} [return-signal]`);
     io.of("/user")
       .to(callerId)
       .emit("receiving-returned-signal", { signal, id: socket.id });

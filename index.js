@@ -33,12 +33,9 @@ io.of("/user").on("connection", (socket) => {
     // Send existing users to the new user
     const otherUsers = [...room].filter((id) => id !== socket.id);
     socket.emit("all-users", otherUsers);
-
-    // Notify others that a new user joined
-    socket.to(roomId).emit("user-joined", { newUserId: socket.id });
   });
 
-  // ✅ Step 1: Caller sends signal
+  // ✅ Step 1: Caller sends signal to target user
   socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
     console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
     io.of("/user")
@@ -46,7 +43,7 @@ io.of("/user").on("connection", (socket) => {
       .emit("receiving-signal", { signal, callerId });
   });
 
-  // ✅ Step 2: Callee returns signal
+  // ✅ Step 2: Callee returns signal back to caller
   socket.on("returning-signal", ({ signal, callerId }) => {
     console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
     io.of("/user")

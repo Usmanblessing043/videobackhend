@@ -30,40 +30,46 @@ io.of("/user").on("connection", (socket) => {
       console.log("🎥 Sent HOST event to:", socket.id);
     }
 
-    // Notify others in the room
-    socket.to(roomId).emit("user-joined", socket.id);
-
-    // Let the new user know about existing participants
+    // Tell existing users someone joined
     const otherUsers = [...room].filter((id) => id !== socket.id);
-    if (otherUsers.length) {
-      socket.emit("all-users", otherUsers);
-    }
+    socket.emit("all-users", otherUsers);
 
-    // Relay WebRTC signaling messages
-    socket.on("offer", ({ target, callerId, sdp }) => {
-      console.log(`📡 Relaying OFFER from ${callerId} ➝ ${target}`);
-      io.of("/user").to(target).emit("offer", { sdp, callerId });
-    });
+    // Tell everyone else about the new user
+    socket.to(roomId).emit("user-joined", { callerId: socket.id });
+  });
 
-    socket.on("answer", ({ target, callerId, sdp }) => {
-      console.log(`📡 Relaying ANSWER from ${callerId} ➝ ${target}`);
-      io.of("/user").to(target).emit("answer", { sdp, callerId });
-    });
+  // ✅ Simple-peer signaling
+  socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
+    console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
+    io.of("/user").to(userToSignal).emit("user-joined", { signal, callerId });
+  });
 
-    socket.on("ice-candidate", ({ target, candidate }) => {
-      console.log(`❄️ Relaying ICE candidate to ${target}`);
-      io.of("/user").to(target).emit("ice-candidate", { candidate, from: socket.id });
-    });
+  socket.on("returning-signal", ({ signal, callerId }) => {
+    console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
+    io.of("/user").to(callerId).emit("signal", { signal, callerId: socket.id });
+  });
 
-    // Chat messages
-    socket.on("chat-message", ({ roomId, user, message }) => {
-      io.of("/user").to(roomId).emit("chat-message", { user, message });
-    });
+  // ✅ Chat messages
+  socket.on("chat-message", ({ roomId, user, message }) => {
+    io.of("/user").to(roomId).emit("chat-message", { user, message });
+  });
 
-    socket.on("disconnect", () => {
-      console.log("❌ User disconnected:", socket.id);
-      socket.to(roomId).emit("user-left", socket.id);
+  // ✅ End call by host
+  socket.on("end-call", (roomId) => {
+    io.of("/user").to(roomId).emit("end-call");
+    console.log(`🚪 Host ended call in room ${roomId}`);
+  });
+
+  socket.on("disconnecting", () => {
+    [...socket.rooms].forEach((roomId) => {
+      if (roomId !== socket.id) {
+        socket.to(roomId).emit("user-left", socket.id);
+      }
     });
+  });
+
+  socket.on("disconnect", () => {
+    console.log("❌ User disconnected:", socket.id);
   });
 });
 

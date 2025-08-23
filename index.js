@@ -18,7 +18,6 @@ app.use("/user", uservideoroute);
 io.of("/user").on("connection", (socket) => {
   console.log("🔗 User connected:", socket.id);
 
-  // ✅ Join room
   socket.on("join-room", (roomId) => {
     socket.join(roomId);
     console.log(`📌 ${socket.id} joined room: ${roomId}`);
@@ -30,39 +29,35 @@ io.of("/user").on("connection", (socket) => {
       console.log("🎥 Sent HOST event to:", socket.id);
     }
 
-    // Send existing users to the new user
     const otherUsers = [...room].filter((id) => id !== socket.id);
     socket.emit("all-users", otherUsers);
   });
 
-  // ✅ Step 1: Caller sends signal to target user
-  socket.on("send-signal", ({ userToSignal, callerId, signal }) => {
-    console.log(`📡 ${callerId} ➝ ${userToSignal} [send-signal]`);
+  // ✅ Step 1: Caller sends signal
+  socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
+    console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
     io.of("/user")
       .to(userToSignal)
       .emit("receiving-signal", { signal, callerId });
   });
 
-  // ✅ Step 2: Callee returns signal back to caller
-  socket.on("return-signal", ({ signal, callerId }) => {
-    console.log(`📡 ${socket.id} ➝ ${callerId} [return-signal]`);
+  // ✅ Step 2: Callee returns signal
+  socket.on("returning-signal", ({ signal, callerId }) => {
+    console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
     io.of("/user")
       .to(callerId)
       .emit("receiving-returned-signal", { signal, id: socket.id });
   });
 
-  // ✅ Chat
   socket.on("chat-message", ({ roomId, user, message }) => {
     io.of("/user").to(roomId).emit("chat-message", { user, message });
   });
 
-  // ✅ Host ends call
   socket.on("end-call", (roomId) => {
     io.of("/user").to(roomId).emit("end-call");
     console.log(`🚪 Host ended call in room ${roomId}`);
   });
 
-  // ✅ Handle disconnects
   socket.on("disconnecting", () => {
     [...socket.rooms].forEach((roomId) => {
       if (roomId !== socket.id) {

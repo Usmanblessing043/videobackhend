@@ -24,40 +24,46 @@ io.of("/user").on("connection", (socket) => {
 
     const room = io.of("/user").adapter.rooms.get(roomId);
 
+    // If host
     if (room && room.size === 1) {
       socket.emit("host");
       console.log("🎥 Sent HOST event to:", socket.id);
     }
 
+    // ✅ Notify the new user about existing users
     const otherUsers = [...room].filter((id) => id !== socket.id);
     socket.emit("all-users", otherUsers);
+
+    // ✅ ALSO notify existing users that a new peer joined
+    otherUsers.forEach((id) => {
+      io.of("/user").to(id).emit("user-joined", socket.id);
+    });
   });
 
-  // ✅ Step 1: Caller sends signal
+  // ✅ Caller sends signal
   socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
     console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
-    io.of("/user")
-      .to(userToSignal)
-      .emit("receiving-signal", { signal, callerId });
+    io.of("/user").to(userToSignal).emit("receiving-signal", { signal, callerId });
   });
 
-  // ✅ Step 2: Callee returns signal
+  // ✅ Callee returns signal
   socket.on("returning-signal", ({ signal, callerId }) => {
     console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
-    io.of("/user")
-      .to(callerId)
-      .emit("receiving-returned-signal", { signal, id: socket.id });
+    io.of("/user").to(callerId).emit("receiving-returned-signal", { signal, id: socket.id });
   });
 
+  // ✅ Chat
   socket.on("chat-message", ({ roomId, user, message }) => {
     io.of("/user").to(roomId).emit("chat-message", { user, message });
   });
 
+  // ✅ End call
   socket.on("end-call", (roomId) => {
     io.of("/user").to(roomId).emit("end-call");
     console.log(`🚪 Host ended call in room ${roomId}`);
   });
 
+  // ✅ Handle disconnect
   socket.on("disconnecting", () => {
     [...socket.rooms].forEach((roomId) => {
       if (roomId !== socket.id) {
@@ -70,6 +76,7 @@ io.of("/user").on("connection", (socket) => {
     console.log("❌ User disconnected:", socket.id);
   });
 });
+
 
 connect();
 

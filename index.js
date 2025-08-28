@@ -1,201 +1,239 @@
-// server.js - Updated with JWT import and CORS fix
 const express = require("express");
 const app = express();
 const connect = require("./Dbconfiguration/db.connect");
 const uservideoroute = require("./routes/user.routes");
 require("dotenv").config();
 const cors = require("cors");
-const jwt = require("jsonwebtoken"); // Added JWT import
 
 const http = require("http");
 const { Server } = require("socket.io");
 
 const server = http.createServer(app);
+const io = new Server(server, { 
+  cors: { 
+    origin: "*",
+    methods: ["GET", "POST"]
+  },
+  pingTimeout: 60000,
+  pingInterval: 25000
+});
 
-// ===== CORS SETTINGS =====
-const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  credentials: true,
-};
+// Store room data for better management
+const rooms = new Map();
 
-app.use(cors(corsOptions));
+app.use(cors({ origin: "*" }));
 app.use(express.json({ limit: "50mb" }));
 app.use("/user", uservideoroute);
 
-const io = new Server(server, {
-  cors: corsOptions,
+// Middleware to validate room IDs
+const validateRoomId = (roomId) => {
+  return typeof roomId === 'string' && roomId.length > 0 && roomId.length < 50;
+};
+
+io.of("/user").on("connection", (socket) => {
+  console.log("🔗 User connected:", socket.id);
+  
+  // Track user's room
+  let currentRoom = null;
+
+  socket.on("join-room", (roomId) => {
+    if (!validateRoomId(roomId)) {
+      socket.emit("error", "Invalid room ID");
+      return;
+    }
+
+    try {
+      // Leave previous room if any
+      if (currentRoom) {
+        socket.leave(currentRoom);
+      }
+      
+      socket.join(roomId);
+      currentRoom = roomId;
+      console.log(`📌 ${socket.id} joined room: ${roomId}`);
+
+      // Initialize room data if it doesn't exist
+      if (!rooms.has(roomId)) {
+        rooms.set(roomId, {
+          participants: new Set(),
+          host: null,
+          createdAt: new Date()
+        });
+      }
+      
+      const roomData = rooms.get(roomId);
+      roomData.participants.add(socket.id);
+
+      // If host (first user in room)
+      if (roomData.participants.size === 1) {
+        roomData.host = socket.id;
+        socket.emit("host");
+        console.log("🎥 Sent HOST event to:", socket.id);
+      }
+
+      // Get all users in the room except the current one
+      const otherUsers = Array.from(roomData.participants).filter(id => id !== socket.id);
+      
+      // Notify the new user about existing users
+      socket.emit("all-users", otherUsers);
+
+      // Notify existing users that a new peer joined
+      socket.to(roomId).emit("user-joined", socket.id);
+      
+      // Send participant count to all users in the room
+      io.of("/user").to(roomId).emit("participant-count", roomData.participants.size);
+      
+    } catch (error) {
+      console.error("Error joining room:", error);
+      socket.emit("error", "Failed to join room");
+    }
+  });
+
+  // Caller sends signal
+  socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
+    console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
+    io.of("/user").to(userToSignal).emit("receiving-signal", { signal, callerId });
+  });
+
+  // Callee returns signal
+  socket.on("returning-signal", ({ signal, callerId }) => {
+    console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
+    io.of("/user").to(callerId).emit("receiving-returned-signal", { signal, id: socket.id });
+  });
+
+  // Chat message
+  socket.on("chat-message", ({ roomId, user, message }) => {
+    if (!validateRoomId(roomId)) return;
+    
+    // Validate message
+    if (typeof message !== 'string' || message.trim().length === 0 || message.length > 1000) {
+      return;
+    }
+    
+    // Broadcast to room
+    io.of("/user").to(roomId).emit("chat-message", { 
+      user: user || socket.id, 
+      message: message.trim(),
+      timestamp: new Date().toISOString()
+    });
+    
+    console.log(`💬 ${socket.id} sent message in room ${roomId}`);
+  });
+
+  // End call (host only)
+  socket.on("end-call", (roomId) => {
+    if (!validateRoomId(roomId)) return;
+    
+    const roomData = rooms.get(roomId);
+    if (roomData && roomData.host === socket.id) {
+      io.of("/user").to(roomId).emit("end-call");
+      console.log(`🚪 Host ended call in room ${roomId}`);
+      
+      // Clean up room data after a delay
+      setTimeout(() => {
+        if (rooms.has(roomId)) {
+          rooms.delete(roomId);
+          console.log(`🧹 Cleaned up room ${roomId}`);
+        }
+      }, 5000);
+    }
+  });
+
+  // Handle disconnect
+  socket.on("disconnecting", (reason) => {
+    console.log(`❌ User disconnecting: ${socket.id}, reason: ${reason}`);
+    
+    // Notify all rooms the user is in
+    const roomsToLeave = Array.from(socket.rooms).filter(roomId => roomId !== socket.id);
+    
+    roomsToLeave.forEach(roomId => {
+      socket.to(roomId).emit("user-left", socket.id);
+      
+      // Update room data
+      if (rooms.has(roomId)) {
+        const roomData = rooms.get(roomId);
+        roomData.participants.delete(socket.id);
+        
+        // If host left, assign new host
+        if (roomData.host === socket.id && roomData.participants.size > 0) {
+          const newHost = Array.from(roomData.participants)[0];
+          roomData.host = newHost;
+          io.of("/user").to(newHost).emit("host");
+          console.log(`👑 New host assigned: ${newHost} in room ${roomId}`);
+        }
+        
+        // Send updated participant count
+        io.of("/user").to(roomId).emit("participant-count", roomData.participants.size);
+        
+        // Clean up empty rooms
+        if (roomData.participants.size === 0) {
+          setTimeout(() => {
+            if (rooms.has(roomId) && rooms.get(roomId).participants.size === 0) {
+              rooms.delete(roomId);
+              console.log(`🧹 Cleaned up empty room ${roomId}`);
+            }
+          }, 30000); // Wait 30 seconds before cleaning up empty room
+        }
+      }
+    });
+  });
+
+  socket.on("disconnect", (reason) => {
+    console.log(`❌ User disconnected: ${socket.id}, reason: ${reason}`);
+  });
+
+  // Handle errors
+  socket.on("error", (error) => {
+    console.error(`Socket error for ${socket.id}:`, error);
+  });
 });
 
-// Track online users { userId: socketId }
-const onlineUsers = {};
-// Track room admins (user who created the meeting)
-const roomAdmins = {};
+// Add health check endpoint
+app.get("/health", (req, res) => {
+  res.status(200).json({ 
+    status: "OK", 
+    timestamp: new Date().toISOString(),
+    rooms: Array.from(rooms.keys()),
+    totalParticipants: Array.from(rooms.values()).reduce((acc, room) => acc + room.participants.size, 0)
+  });
+});
 
-io.use((socket, next) => {
-  const token = socket.handshake.auth?.token;
-  // For demo purposes, allow connection without token
-  if (!token) {
-    socket.userId = `demo-user-${Math.random().toString(36).substr(2, 9)}`;
-    socket.username = "Demo User";
-    return next();
+// Add endpoint to get room info
+app.get("/room/:roomId", (req, res) => {
+  const roomId = req.params.roomId;
+  if (!validateRoomId(roomId)) {
+    return res.status(400).json({ error: "Invalid room ID" });
   }
   
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.userId = decoded.id;
-    socket.username = decoded.username; // Assuming username is in JWT
-    next();
-  } catch (err) {
-    next(new Error("Unauthorized: Invalid token"));
+  const roomData = rooms.get(roomId);
+  if (!roomData) {
+    return res.status(404).json({ error: "Room not found" });
   }
+  
+  res.json({
+    roomId,
+    host: roomData.host,
+    participantCount: roomData.participants.size,
+    createdAt: roomData.createdAt,
+    participants: Array.from(roomData.participants)
+  });
 });
 
-const socketRooms = new Map();
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
 
-io.on("connection", (socket) => {
-  console.log('User connected:', socket.userId);
-  onlineUsers[socket.userId] = socket.id;
+// Handle unhandled promise rejections
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled promise rejection:", err);
+});
 
-  const joinedRooms = new Set();
-  socketRooms.set(socket.id, joinedRooms);
-
-  // ===== Join a meeting room =====
-  socket.on("join-room", ({ roomId, username }) => {
-    if (!roomId) return;
-    
-    // If this is the first user joining, set them as admin
-    const roomSockets = io.sockets.adapter.rooms.get(roomId);
-    if (!roomSockets || roomSockets.size === 0) {
-      roomAdmins[roomId] = socket.userId;
-    }
-    
-    socket.join(roomId);
-    joinedRooms.add(roomId);
-    
-    // Notify others in the room
-    socket.to(roomId).emit("user-joined", { 
-      socketId: socket.id, 
-      userId: socket.userId, 
-      username: username || socket.username 
-    });
-    
-    // Send existing users to the new user
-    if (roomSockets) {
-      const otherUsers = [];
-      roomSockets.forEach(existingSocketId => {
-        if (existingSocketId !== socket.id) {
-          const existingSocket = io.sockets.sockets.get(existingSocketId);
-          if (existingSocket) {
-            otherUsers.push({ 
-              socketId: existingSocketId, 
-              userId: existingSocket.userId, 
-              username: existingSocket.username 
-            });
-          }
-        }
-      });
-      
-      // Send all existing users at once
-      if (otherUsers.length > 0) {
-        socket.emit("existing-users", otherUsers);
-      }
-    }
-  });
-
-  // ===== Leave a meeting room =====
-  socket.on("leave-room", ({ roomId }) => {
-    if (!roomId) return;
-    socket.leave(roomId);
-    joinedRooms.delete(roomId);
-    socket.to(roomId).emit("user-left", { socketId: socket.id });
-  });
-
-  // ===== Directed WebRTC signaling (mesh) =====
-  socket.on("signal", ({ roomId, to, data }) => {
-    if (!roomId || !data) return;
-    if (to) {
-      io.to(to).emit("signal", { from: socket.id, data });
-    } else {
-      socket.to(roomId).emit("signal", { from: socket.id, data });
-    }
-  });
-
-  // ===== Chat message handling =====
-  socket.on("send-message", ({ roomId, message }) => {
-    if (!roomId || !message) return;
-    
-    // Add timestamp if not provided
-    if (!message.time) {
-      message.time = new Date().toLocaleTimeString();
-    }
-    
-    // Broadcast to everyone in the room including sender
-    io.to(roomId).emit("receive-message", message);
-  });
-
-  // ===== End meeting for all participants =====
-  socket.on("end-meeting", ({ roomId }) => {
-    if (!roomId) return;
-    
-    // Check if user is the admin of the room
-    if (roomAdmins[roomId] === socket.userId) {
-      // Notify all participants
-      io.to(roomId).emit("meeting-ended");
-      
-      // Clear admin for the room
-      delete roomAdmins[roomId];
-    }
-  });
-
-  // ===== Compatibility: direct person-to-person notify =====
-  socket.on("call-user", ({ toUserId, type }) => {
-    const targetSocket = onlineUsers[toUserId];
-    if (targetSocket) {
-      io.to(targetSocket).emit("incoming-call", {
-        fromUserId: socket.userId,
-        type,
-      });
-    }
-  });
-
-  // ===== Handle existing users request =====
-  socket.on("request-existing-users", ({ roomId }) => {
-    const roomSockets = io.sockets.adapter.rooms.get(roomId);
-    if (roomSockets) {
-      const otherUsers = [];
-      roomSockets.forEach(existingSocketId => {
-        if (existingSocketId !== socket.id) {
-          const existingSocket = io.sockets.sockets.get(existingSocketId);
-          if (existingSocket) {
-            otherUsers.push({ 
-              socketId: existingSocketId, 
-              userId: existingSocket.userId, 
-              username: existingSocket.username 
-            });
-          }
-        }
-      });
-      
-      socket.emit("existing-users", otherUsers);
-    }
-  });
-
-  socket.on("disconnect", () => {
-    console.log('User disconnected:', socket.userId);
-    const rooms = socketRooms.get(socket.id) || new Set();
-    rooms.forEach((rid) => {
-      socket.to(rid).emit("user-left", { socketId: socket.id });
-      
-      // If admin disconnects, clear admin status for room
-      if (roomAdmins[rid] === socket.userId) {
-        delete roomAdmins[rid];
-      }
-    });
-    socketRooms.delete(socket.id);
-
-    delete onlineUsers[socket.userId];
-  });
+// Handle uncaught exceptions
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+  process.exit(1);
 });
 
 connect();
@@ -205,4 +243,16 @@ server.listen(port, () => {
   console.log(`✅ Server started at port ${port}`);
 });
 
-module.exports = { app, io };
+// Graceful shutdown
+process.on("SIGINT", () => {
+  console.log("🛑 Shutting down gracefully...");
+  
+  // Close all connections
+  io.close(() => {
+    console.log("✅ Socket.IO server closed");
+    server.close(() => {
+      console.log("✅ HTTP server closed");
+      process.exit(0);
+    });
+  });
+});

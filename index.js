@@ -36,57 +36,31 @@ io.of("/user").on("connection", (socket) => {
   // Track user's room
   let currentRoom = null;
 
-  socket.on("join-room", (roomId) => {
-    if (!validateRoomId(roomId)) {
-      socket.emit("error", "Invalid room ID");
-      return;
+  socket.on("join-room", (roomId, peerId) => {
+    socket.join(roomId);
+    console.log(`📌 ${socket.id} (Peer: ${peerId}) joined room: ${roomId}`);
+
+    const room = io.of("/user").adapter.rooms.get(roomId);
+    
+    if (!room) return;
+
+    // If host (first user in room)
+    if (room.size === 1) {
+      socket.emit("host");
+      console.log("🎥 Sent HOST event to:", socket.id);
     }
 
-    try {
-      // Leave previous room if any
-      if (currentRoom) {
-        socket.leave(currentRoom);
-      }
-      
-      socket.join(roomId);
-      currentRoom = roomId;
-      console.log(`📌 ${socket.id} joined room: ${roomId}`);
+    // Get all users in the room except the current one
+    const otherUsers = Array.from(room).filter(id => id !== socket.id);
+    
+    // Notify the new user about existing users
+    socket.emit("all-users", otherUsers);
 
-      // Initialize room data if it doesn't exist
-      if (!rooms.has(roomId)) {
-        rooms.set(roomId, {
-          participants: new Set(),
-          host: null,
-          createdAt: new Date()
-        });
-      }
-      
-      const roomData = rooms.get(roomId);
-      roomData.participants.add(socket.id);
-
-      // If host (first user in room)
-      if (roomData.participants.size === 1) {
-        roomData.host = socket.id;
-        socket.emit("host");
-        console.log("🎥 Sent HOST event to:", socket.id);
-      }
-
-      // Get all users in the room except the current one
-      const otherUsers = Array.from(roomData.participants).filter(id => id !== socket.id);
-      
-      // Notify the new user about existing users
-      socket.emit("all-users", otherUsers);
-
-      // Notify existing users that a new peer joined
-      socket.to(roomId).emit("user-joined", socket.id);
-      
-      // Send participant count to all users in the room
-      io.of("/user").to(roomId).emit("participant-count", roomData.participants.size);
-      
-    } catch (error) {
-      console.error("Error joining room:", error);
-      socket.emit("error", "Failed to join room");
-    }
+    // Notify existing users that a new peer joined
+    socket.to(roomId).emit("user-joined", socket.id);
+    
+    // Send participant count to all users in the room
+    io.of("/user").to(roomId).emit("participant-count", room.size);
   });
 
   // Caller sends signal

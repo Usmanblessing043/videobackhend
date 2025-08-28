@@ -1,46 +1,50 @@
-// server.js - Updated with JWT import and CORS fix
 const express = require("express");
-const app = express();
-const connect = require("./Dbconfiguration/db.connect");
-const uservideoroute = require("./routes/user.routes");
-require("dotenv").config();
 const cors = require("cors");
-const jwt = require("jsonwebtoken"); // Added JWT import
-
+const dotenv = require("dotenv");
+const connect = require("./Dbconfig/db.connect");
+const userRouter = require("./routes/user.route");
 const http = require("http");
 const { Server } = require("socket.io");
+const jwt = require("jsonwebtoken");
 
+dotenv.config();
+
+const app = express();
 const server = http.createServer(app);
 
 // ===== CORS SETTINGS =====
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3000",
+  origin: process.env.FRONTEND_URL,
   methods: ["GET", "POST", "PUT", "DELETE"],
   credentials: true,
 };
-
 app.use(cors(corsOptions));
-app.use(express.json({ limit: "50mb" }));
-app.use("/user", uservideoroute);
 
+// ===== Body parsers =====
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// ===== Routes =====
+app.use("/", userRouter);
+
+// ===== DB Connection =====
+connect();
+
+// ===== Socket.io =====
 const io = new Server(server, {
   cors: corsOptions,
 });
 
 // Track online users { userId: socketId }
 const onlineUsers = {};
+
 // Track room admins (user who created the meeting)
 const roomAdmins = {};
 
+// ===== Socket.io middleware for JWT auth =====
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
-  // For demo purposes, allow connection without token
-  if (!token) {
-    socket.userId = `demo-user-${Math.random().toString(36).substr(2, 9)}`;
-    socket.username = "Demo User";
-    return next();
-  }
-  
+  if (!token) return next(new Error("Unauthorized: No token"));
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.userId = decoded.id;
@@ -51,10 +55,10 @@ io.use((socket, next) => {
   }
 });
 
+// room membership: socketId -> Set(roomId)
 const socketRooms = new Map();
 
 io.on("connection", (socket) => {
-  console.log('User connected:', socket.userId);
   onlineUsers[socket.userId] = socket.id;
 
   const joinedRooms = new Set();
@@ -82,12 +86,11 @@ io.on("connection", (socket) => {
     
     // Send existing users to the new user
     if (roomSockets) {
-      const otherUsers = [];
       roomSockets.forEach(existingSocketId => {
         if (existingSocketId !== socket.id) {
           const existingSocket = io.sockets.sockets.get(existingSocketId);
           if (existingSocket) {
-            otherUsers.push({ 
+            socket.emit("user-joined", { 
               socketId: existingSocketId, 
               userId: existingSocket.userId, 
               username: existingSocket.username 
@@ -95,11 +98,6 @@ io.on("connection", (socket) => {
           }
         }
       });
-      
-      // Send all existing users at once
-      if (otherUsers.length > 0) {
-        socket.emit("existing-users", otherUsers);
-      }
     }
   });
 
@@ -148,7 +146,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ===== Compatibility: direct person-to-person notify =====
+  // ===== Compatibility: direct person-to-person notify (optional; not used now) =====
   socket.on("call-user", ({ toUserId, type }) => {
     const targetSocket = onlineUsers[toUserId];
     if (targetSocket) {
@@ -159,30 +157,7 @@ io.on("connection", (socket) => {
     }
   });
 
-  // ===== Handle existing users request =====
-  socket.on("request-existing-users", ({ roomId }) => {
-    const roomSockets = io.sockets.adapter.rooms.get(roomId);
-    if (roomSockets) {
-      const otherUsers = [];
-      roomSockets.forEach(existingSocketId => {
-        if (existingSocketId !== socket.id) {
-          const existingSocket = io.sockets.sockets.get(existingSocketId);
-          if (existingSocket) {
-            otherUsers.push({ 
-              socketId: existingSocketId, 
-              userId: existingSocket.userId, 
-              username: existingSocket.username 
-            });
-          }
-        }
-      });
-      
-      socket.emit("existing-users", otherUsers);
-    }
-  });
-
   socket.on("disconnect", () => {
-    console.log('User disconnected:', socket.userId);
     const rooms = socketRooms.get(socket.id) || new Set();
     rooms.forEach((rid) => {
       socket.to(rid).emit("user-left", { socketId: socket.id });
@@ -198,11 +173,7 @@ io.on("connection", (socket) => {
   });
 });
 
-connect();
-
-const port = process.env.PORT || 3022;
-server.listen(port, () => {
-  console.log(`✅ Server started at port ${port}`);
-});
+const PORT = process.env.PORT;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 
 module.exports = { app, io };

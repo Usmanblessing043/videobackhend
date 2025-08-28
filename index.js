@@ -15,7 +15,8 @@ const io = new Server(server, {
     methods: ["GET", "POST"]
   },
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  maxHttpBufferSize: 1e8 // Increase buffer size for image data
 });
 
 // Store room data for better management
@@ -33,16 +34,21 @@ const validateRoomId = (roomId) => {
 io.of("/user").on("connection", (socket) => {
   console.log("🔗 User connected:", socket.id);
   
-  // Track user's room
+  // Track user's room and username
   let currentRoom = null;
+  let username = "User";
 
-  socket.on("join-room", (roomId) => {
+  socket.on("join-room", (data) => {
+    const { roomId, username: user } = data;
     if (!validateRoomId(roomId)) {
       socket.emit("error", "Invalid room ID");
       return;
     }
 
     try {
+      // Store username
+      if (user) username = user;
+      
       // Leave previous room if any
       if (currentRoom) {
         socket.leave(currentRoom);
@@ -50,19 +56,19 @@ io.of("/user").on("connection", (socket) => {
       
       socket.join(roomId);
       currentRoom = roomId;
-      console.log(`📌 ${socket.id} joined room: ${roomId}`);
+      console.log(`📌 ${socket.id} (${username}) joined room: ${roomId}`);
 
       // Initialize room data if it doesn't exist
       if (!rooms.has(roomId)) {
         rooms.set(roomId, {
-          participants: new Set(),
+          participants: new Map(),
           host: null,
           createdAt: new Date()
         });
       }
       
       const roomData = rooms.get(roomId);
-      roomData.participants.add(socket.id);
+      roomData.participants.set(socket.id, { username });
 
       // If host (first user in room)
       if (roomData.participants.size === 1) {
@@ -71,14 +77,11 @@ io.of("/user").on("connection", (socket) => {
         console.log("🎥 Sent HOST event to:", socket.id);
       }
 
-      // Get all users in the room except the current one
-      const otherUsers = Array.from(roomData.participants).filter(id => id !== socket.id);
-      
-      // Notify the new user about existing users
-      socket.emit("all-users", otherUsers);
-
-      // Notify existing users that a new peer joined
-      socket.to(roomId).emit("user-joined", socket.id);
+      // Notify others in the room
+      socket.to(roomId).emit("user-joined", { 
+        userId: socket.id, 
+        username 
+      });
       
       // Send participant count to all users in the room
       io.of("/user").to(roomId).emit("participant-count", roomData.participants.size);
@@ -89,35 +92,35 @@ io.of("/user").on("connection", (socket) => {
     }
   });
 
-  // Caller sends signal
-  socket.on("sending-signal", ({ userToSignal, callerId, signal }) => {
-    console.log(`📡 ${callerId} ➝ ${userToSignal} [sending-signal]`);
-    io.of("/user").to(userToSignal).emit("receiving-signal", { signal, callerId });
-  });
-
-  // Callee returns signal
-  socket.on("returning-signal", ({ signal, callerId }) => {
-    console.log(`📡 ${socket.id} ➝ ${callerId} [returning-signal]`);
-    io.of("/user").to(callerId).emit("receiving-returned-signal", { signal, id: socket.id });
+  // Handle video frames
+  socket.on("video-frame", (data) => {
+    if (!validateRoomId(data.roomId)) return;
+    
+    // Broadcast to all other users in the room
+    socket.to(data.roomId).emit("video-frame", {
+      userId: socket.id,
+      username: username,
+      frame: data.frame
+    });
   });
 
   // Chat message
-  socket.on("chat-message", ({ roomId, user, message }) => {
-    if (!validateRoomId(roomId)) return;
+  socket.on("chat-message", (data) => {
+    if (!validateRoomId(data.roomId)) return;
     
     // Validate message
-    if (typeof message !== 'string' || message.trim().length === 0 || message.length > 1000) {
+    if (typeof data.message !== 'string' || data.message.trim().length === 0 || data.message.length > 1000) {
       return;
     }
     
     // Broadcast to room
-    io.of("/user").to(roomId).emit("chat-message", { 
-      user: user || socket.id, 
-      message: message.trim(),
-      timestamp: new Date().toISOString()
+    io.of("/user").to(data.roomId).emit("chat-message", { 
+      user: data.user || username, 
+      message: data.message.trim(),
+      timestamp: data.timestamp || new Date().toISOString()
     });
     
-    console.log(`💬 ${socket.id} sent message in room ${roomId}`);
+    console.log(`💬 ${socket.id} sent message in room ${data.roomId}`);
   });
 
   // End call (host only)
@@ -156,7 +159,7 @@ io.of("/user").on("connection", (socket) => {
         
         // If host left, assign new host
         if (roomData.host === socket.id && roomData.participants.size > 0) {
-          const newHost = Array.from(roomData.participants)[0];
+          const newHost = Array.from(roomData.participants.keys())[0];
           roomData.host = newHost;
           io.of("/user").to(newHost).emit("host");
           console.log(`👑 New host assigned: ${newHost} in room ${roomId}`);
@@ -215,7 +218,10 @@ app.get("/room/:roomId", (req, res) => {
     host: roomData.host,
     participantCount: roomData.participants.size,
     createdAt: roomData.createdAt,
-    participants: Array.from(roomData.participants)
+    participants: Array.from(roomData.participants.entries()).map(([id, data]) => ({
+      id,
+      username: data.username
+    }))
   });
 });
 

@@ -22,6 +22,7 @@
     "nodemailer": "^7.0.10",
     "nodemon": "^3.1.10",
     "resend": "^6.2.2",
+    "sib-api-v3-sdk": "^8.5.0",
     "socket.io": "^4.8.1",
     "uuid": "^11.1.0"
   }

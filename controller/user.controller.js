@@ -4,8 +4,8 @@ env
 const {uservideomodel} = require("../model/user.model")
 uservideomodel
 const { v4: uuidv4 } = require("uuid");
-const {Resend} = require ("resend")
-const resend = new Resend(process.env.RESEND_API_KEY);
+// const {Resend} = require ("resend")
+// const resend = new Resend(process.env.RESEND_API_KEY);
 
 
 const bcrypt = require('bcryptjs')
@@ -14,6 +14,8 @@ const saltRound = 10
 const cloudinary = require("../utils/cloudinary")
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+
+
 
 const Signup = async (req, res) => {
     try {
@@ -188,6 +190,40 @@ const Createroom =  (req, res) => {
 //     res.status(500).send({ message: error.message, status: false });
 //   }
 // };
+// const ForgetPassword = async (req, res) => {
+//   try {
+//     const { email } = req.body;
+//     const user = await uservideomodel.findOne({ email });
+//     if (!user) {
+//       return res.status(404).send({ message: "User not found", status: false });
+//     }
+
+//     const resetToken = crypto.randomBytes(32).toString("hex");
+//     user.resetToken = resetToken;
+//     user.resetTokenExpire = Date.now() + 10 * 60 * 1000; // 10 mins
+//     await user.save();
+
+//     const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
+
+//     await resend.emails.send({
+//       from: 'Video Conference <usmanblessing043@gmail.com>',
+//       to: email,
+//       subject: 'Password Reset Link',
+//       html: `
+//         <p>You requested a password reset.</p>
+//         <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
+//         <p>This link expires in 10 minutes.</p>
+//       `,
+//     });
+
+//     res.status(200).send({ message: "Reset link sent to your email", status: true });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).send({ message: error.message, status: false });
+//   }
+// };
+
+
 const ForgetPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -198,25 +234,35 @@ const ForgetPassword = async (req, res) => {
 
     const resetToken = crypto.randomBytes(32).toString("hex");
     user.resetToken = resetToken;
-    user.resetTokenExpire = Date.now() + 10 * 60 * 1000; // 10 mins
+    user.resetTokenExpire = Date.now() + 10 * 60 * 1000;
     await user.save();
 
     const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
 
-    await resend.emails.send({
-      from: 'Video Conference <usmanblessing043@gmail.com>',
+    // Configure Brevo SMTP transport
+    const transporter = nodemailer.createTransport({
+      host: "smtp-relay.brevo.com",
+      port: 587,
+      auth: {
+        user: process.env.EMAIL_FROM,
+        pass: process.env.BREVO_API_KEY,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Video Conference" <${process.env.EMAIL_FROM}>`,
       to: email,
-      subject: 'Password Reset Link',
+      subject: "Password Reset Link",
       html: `
         <p>You requested a password reset.</p>
         <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
-        <p>This link expires in 10 minutes.</p>
+        <p>This link will expire in 10 minutes.</p>
       `,
     });
 
     res.status(200).send({ message: "Reset link sent to your email", status: true });
   } catch (error) {
-    console.error(error);
+    console.log(error);
     res.status(500).send({ message: error.message, status: false });
   }
 };

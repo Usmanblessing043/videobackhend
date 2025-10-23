@@ -247,9 +247,9 @@ const ForgetPassword = async (req, res) => {
     apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
     const sendSmtpEmail = {
-  sender: { name: "Video Conference", email: "https://videoconference-phi.vercel.app" },
+  sender: { name: "Video Conference", email: "usmanblessing043@gmail.com" },
   to: [{ email }],
-  subject: "🔐 Reset Your Video Conference Password",
+  subject: " Reset Your Video Conference Password",
   htmlContent: `
   <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; background-color: #f4f4f7; padding: 40px;">
     <div style="max-width: 600px; margin: auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
@@ -258,7 +258,7 @@ const ForgetPassword = async (req, res) => {
       </div>
 
       <div style="padding: 30px;">
-        <h3 style="color: #333;">Hello 👋</h3>
+        <h3 style="color: #333;">Hello </h3>
         <p style="color: #555; font-size: 16px; line-height: 1.6;">
           We received a request to reset your password for your <strong>Video Conference</strong> account.
           Click the button below to reset it. This link will expire in <strong>10 minutes</strong>.

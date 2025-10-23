@@ -10,6 +10,8 @@ const bcrypt = require('bcryptjs')
 const jwt = require("jsonwebtoken")
 const saltRound = 10
 const cloudinary = require("../utils/cloudinary")
+const nodemailer = require("nodemailer");
+const crypto = require("crypto");
 
 const Signup = async (req, res) => {
     try {
@@ -142,8 +144,79 @@ const Createroom =  (req, res) => {
 
 }
 
+const ForgetPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await uservideomodel.findOne({ email });
+    if (!user) {
+      return res.status(404).send({ message: "User not found", status: false });
+    }
+
+    const resetToken = crypto.randomBytes(32).toString("hex");
+    user.resetToken = resetToken;
+    user.resetTokenExpire = Date.now() + 10 * 60 * 1000; // 10 minutes
+    await user.save();
+
+    const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
+
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Video Conference" <${process.env.EMAIL_USER}>`,
+      to: email,
+      subject: "Password Reset Link",
+      html: `
+        <p>You requested a password reset.</p>
+        <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
+        <p>This link will expire in 10 minutes.</p>
+      `,
+    });
+
+    res.status(200).send({ message: "Reset link sent to your email", status: true });
+  } catch (error) {
+    console.log(error);
+    res.status(500).send({ message: error.message, status: false });
+  }
+};
+
+
+// =============== RESET PASSWORD ===============
+const Resetpassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password } = req.body;
+
+    const user = await uservideomodel.findOne({
+      resetToken: token,
+      resetTokenExpire: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      return res.status(400).send({ message: "Invalid or expired token", status: false });
+    }
+
+    const hashed = await bcrypt.hash(password, 10);
+    user.password = hashed;
+    user.resetToken = undefined;
+    user.resetTokenExpire = undefined;
+    await user.save();
+
+    res.status(200).send({ message: "Password reset successful", status: true });
+  } catch (error) {
+    res.status(500).send({ message: error.message, status: false });
+  }
+};
 
 
 
 
-module.exports = { Signup, Login, Verifytoken, Uploadprofile , Createroom}
+
+
+
+module.exports = { Signup, Login, Verifytoken, Uploadprofile , Createroom, ForgetPassword, Resetpassword}

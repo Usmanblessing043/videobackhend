@@ -1,11 +1,13 @@
 const express =  require ('express')
  const uservideoroute  = express.Router()
-const { Signup, Login, Verifytoken, Uploadprofile, Createroom } = require ("../controller/user.controller")
+const { Signup, Login, Verifytoken, Uploadprofile, Createroom,ForgetPassword, Resetpassword } = require ("../controller/user.controller")
 
 
 uservideoroute.post("/signup",Signup)
 uservideoroute.post("/login", Login)
 uservideoroute.post("/createroom", Createroom)
+uservideoroute.post("/forgetpassword",ForgetPassword)
+uservideoroute.post("/resetpassword/:token",Resetpassword)
 uservideoroute.get("/Verify",Verifytoken)
 uservideoroute.patch("/Upload/:userid",Uploadprofile)
 

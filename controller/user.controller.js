@@ -14,6 +14,8 @@ const saltRound = 10
 const cloudinary = require("../utils/cloudinary")
 const nodemailer = require("nodemailer");
 const crypto = require("crypto");
+const Brevo = require("@getbrevo/brevo");
+
 
 
 
@@ -224,6 +226,8 @@ const Createroom =  (req, res) => {
 // };
 
 
+
+
 const ForgetPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -239,33 +243,30 @@ const ForgetPassword = async (req, res) => {
 
     const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
 
-    // Configure Brevo SMTP transport
-    const transporter = nodemailer.createTransport({
-      host: "smtp-relay.brevo.com",
-      port: 587,
-      auth: {
-        user: process.env.EMAIL_FROM,
-        pass: process.env.BREVO_API_KEY,
-      },
-    });
+    const apiInstance = new Brevo.TransactionalEmailsApi();
+    apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
-    await transporter.sendMail({
-      from: `"Video Conference" <${process.env.EMAIL_FROM}>`,
-      to: email,
+    const sendSmtpEmail = {
+      sender: { name: "Video Conference", email: "no-reply@videoconference.rf.gd" },
+      to: [{ email }],
       subject: "Password Reset Link",
-      html: `
-        <p>You requested a password reset.</p>
-        <p>Click <a href="${resetLink}">here</a> to reset your password.</p>
-        <p>This link will expire in 10 minutes.</p>
+      htmlContent: `
+        <p>Hello,</p>
+        <p>You requested to reset your password.</p>
+        <p>Click <a href="${resetLink}">here</a> to reset it.</p>
+        <p>This link expires in 10 minutes.</p>
       `,
-    });
+    };
 
-    res.status(200).send({ message: "Reset link sent to your email", status: true });
+    const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
+    console.log("Email sent:", result);
+    res.status(200).send({ message: "Reset link sent successfully", status: true });
   } catch (error) {
-    console.log(error);
-    res.status(500).send({ message: error.message, status: false });
+    console.error("Brevo API error:", error);
+    res.status(500).send({ message: "Email failed to send", status: false });
   }
 };
+
 
 // =============== RESET PASSWORD ===============
 const Resetpassword = async (req, res) => {

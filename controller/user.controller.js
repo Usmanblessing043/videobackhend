@@ -247,7 +247,7 @@ const ForgetPassword = async (req, res) => {
     apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
     const sendSmtpEmail = {
-      sender: { name: "Video Conference", email: "no-reply@videoconference.rf.gd" },
+      sender: { name: "Video Conference", email: "usmanblessing043@gmail.com" },
       to: [{ email }],
       subject: "Password Reset Link",
       htmlContent: `

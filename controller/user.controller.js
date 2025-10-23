@@ -247,16 +247,43 @@ const ForgetPassword = async (req, res) => {
     apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
 
     const sendSmtpEmail = {
-      sender: { name: "Video Conference", email: "usmanblessing043@gmail.com" },
-      to: [{ email }],
-      subject: "Password Reset Link",
-      htmlContent: `
-        <p>Hello,</p>
-        <p>You requested to reset your password.</p>
-        <p>Click <a href="${resetLink}">here</a> to reset it.</p>
-        <p>This link expires in 10 minutes.</p>
-      `,
-    };
+  sender: { name: "Video Conference", email: "https://videoconference-phi.vercel.app" },
+  to: [{ email }],
+  subject: "🔐 Reset Your Video Conference Password",
+  htmlContent: `
+  <div style="font-family: 'Segoe UI', Roboto, Arial, sans-serif; background-color: #f4f4f7; padding: 40px;">
+    <div style="max-width: 600px; margin: auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.1);">
+      <div style="background-color: #1db954; color: white; text-align: center; padding: 25px;">
+        <h2 style="margin: 0; font-size: 24px;">Video Conference</h2>
+      </div>
+
+      <div style="padding: 30px;">
+        <h3 style="color: #333;">Hello 👋</h3>
+        <p style="color: #555; font-size: 16px; line-height: 1.6;">
+          We received a request to reset your password for your <strong>Video Conference</strong> account.
+          Click the button below to reset it. This link will expire in <strong>10 minutes</strong>.
+        </p>
+
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${resetLink}" 
+             style="background-color: #1db954; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">
+            Reset Password
+          </a>
+        </div>
+
+        <p style="color: #555; font-size: 15px;">
+          If you didn’t request a password reset, you can safely ignore this email.
+        </p>
+
+        <p style="margin-top: 30px; color: #888; font-size: 14px; text-align: center;">
+          © ${new Date().getFullYear()} Video Conference. All rights reserved.
+        </p>
+      </div>
+    </div>
+  </div>
+  `
+};
+
 
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
     console.log("Email sent:", result);

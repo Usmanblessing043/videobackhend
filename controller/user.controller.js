@@ -230,7 +230,7 @@ const Createroom =  (req, res) => {
 
 const ForgetPassword = async (req, res) => {
   try {
-    const { email, username } = req.body;
+    const { email } = req.body;
     const user = await uservideomodel.findOne({ email });
     if (!user) {
       return res.status(404).send({ message: "User not found", status: false });
@@ -258,7 +258,7 @@ const ForgetPassword = async (req, res) => {
       </div>
 
       <div style="padding: 30px;">
-        <h3 style="color: #333;">Hello ${username}</h3>
+        <h3 style="color: #333;">Hello</h3>
         <p style="color: #555; font-size: 16px; line-height: 1.6;">
           We received a request to reset your password for your <strong>Video Conference</strong> account.
           Click the button below to reset it. This link will expire in <strong>10 minutes</strong>.

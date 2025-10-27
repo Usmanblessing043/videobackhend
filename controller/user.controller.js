@@ -258,7 +258,7 @@ const ForgetPassword = async (req, res) => {
       </div>
 
       <div style="padding: 30px;">
-        <h3 style="color: #333;">Hello</h3>
+        <h3 style="color: #333;">Hello ${user.username || ""},</h3>
         <p style="color: #555; font-size: 16px; line-height: 1.6;">
           We received a request to reset your password for your <strong>Video Conference</strong> account.
           Click the button below to reset it. This link will expire in <strong>10 minutes</strong>.

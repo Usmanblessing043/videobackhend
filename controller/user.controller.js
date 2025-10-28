@@ -287,7 +287,7 @@ const ForgetPassword = async (req, res) => {
 
     const result = await apiInstance.sendTransacEmail(sendSmtpEmail);
     console.log("Email sent:", result);
-    res.status(200).send({ message: "Reset link sent successfully", status: true });
+    res.status(200).send({ message: "Reset link sent successfully to your Email", status: true });
   } catch (error) {
     console.error("Brevo API error:", error);
     res.status(500).send({ message: "Email failed to send", status: false });

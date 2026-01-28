@@ -97,7 +97,7 @@ let timeOnline = {};
         for (let a = 0; a < v.length; ++a) {
           if (v[a] === socket.id) {
             key = k;
-
+                                      
             for (let a = 0; a < connections[key].length; ++a) {
               io.to(connections[key][a]).emit("user-left", socket.id);
             }

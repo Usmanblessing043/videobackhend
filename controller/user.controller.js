@@ -228,6 +228,7 @@ const Createroom =  (req, res) => {
 
 
 
+
 const ForgetPassword = async (req, res) => {
   try {
     const { email } = req.body;
@@ -242,9 +243,10 @@ const ForgetPassword = async (req, res) => {
     await user.save();
 
     const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
+const brevoClient = Brevo.ApiClient.instance;
+brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 
-    const apiInstance = new Brevo.TransactionalEmailsApi();
-    apiInstance.setApiKey(Brevo.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
+const apiInstance = new Brevo.TransactionalEmailsApi();
 
     const sendSmtpEmail = {
   sender: { name: "Video Conference", email: "usmanblessing043@gmail.com" },
@@ -272,7 +274,7 @@ const ForgetPassword = async (req, res) => {
         </div>
 
         <p style="color: #555; font-size: 15px;">
-          If you didn’t request a password reset, you can safely ignore this email.
+          If you did not request a password reset, you can safely ignore this email.
         </p>
 
         <p style="margin-top: 30px; color: #888; font-size: 14px; text-align: center;">
@@ -295,7 +297,7 @@ const ForgetPassword = async (req, res) => {
 };
 
 
-// =============== RESET PASSWORD ===============
+
 const Resetpassword = async (req, res) => {
   try {
     const { token } = req.params;

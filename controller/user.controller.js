@@ -13,8 +13,10 @@ const jwt = require("jsonwebtoken")
 const saltRound = 10
 const cloudinary = require("../utils/cloudinary")
 const nodemailer = require("nodemailer");
-const crypto = require("crypto");
-const Brevo = require("@getbrevo/brevo");
+
+const SibApiV3Sdk = require("sib-api-v3-sdk");
+const crypto = require("crypto"); // Node built-in
+
 
 
 
@@ -243,10 +245,15 @@ const ForgetPassword = async (req, res) => {
     await user.save();
 
     const resetLink = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`;
-const brevoClient = Brevo.ApiClient.instance;
-brevoClient.authentications["api-key"].apiKey = process.env.BREVO_API_KEY;
 
-const apiInstance = new Brevo.TransactionalEmailsApi();
+  const defaultClient = SibApiV3Sdk.ApiClient.instance;
+defaultClient.authentications["api-key"].apiKey =
+  process.env.BREVO_API_KEY;
+
+const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
+
+
+
 
     const sendSmtpEmail = {
   sender: { name: "Video Conference", email: "usmanblessing043@gmail.com" },
